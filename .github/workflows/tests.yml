@@ -2,8 +2,11 @@ name: tests
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
+
+env:
+  COMPOSER_NO_BLOCKING: "1"
 
 jobs:
   test:

@@ -1,6 +1,6 @@
 {
     "name": "dinubo/laravel-mailer",
-    "description": "Laravel Mailer",
+    "description": "Schedule and send segmented Laravel newsletters with per-recipient placeholders, open/click tracking, unsubscribe handling, provider webhooks (Postmark, Resend), and a built-in admin UI.",
     "type": "library",
     "license": "MIT",
     "authors": [
@@ -15,7 +15,7 @@
         "issues": "https://github.com/dinubo/laravel-mailer/issues",
         "source": "https://github.com/dinubo/laravel-mailer"
     },
-    "keywords": ["Laravel", "Mailer"],
+    "keywords": ["laravel", "newsletter", "mailer", "email", "mailing-list", "email-tracking", "unsubscribe", "postmark", "resend"],
     "require": {
         "php": "^8.1",
         "laravel/framework": "^10.0|^11.0|^12.0|^13.0"
