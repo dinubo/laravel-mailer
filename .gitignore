@@ -1,0 +1,17 @@
+# Dependencies
+/vendor/
+
+# Composer lock — libraries should not commit a lock file
+composer.lock
+
+# PHPUnit
+/.phpunit.cache/
+.phpunit.result.cache
+
+# Node / front-end build artifacts (used once a build step is added)
+/node_modules/
+
+# Editors / OS
+/.idea/
+/.vscode/
+.DS_Store
