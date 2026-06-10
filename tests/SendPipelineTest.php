@@ -4,13 +4,24 @@ namespace Dinubo\Mailer\Tests;
 
 use Dinubo\Mailer\Mail\Newsletter as NewsletterMail;
 use Dinubo\Mailer\Models\Newsletter;
-use Illuminate\Database\Eloquent\Model;
+use Dinubo\Mailer\Tests\Fixtures\Recipient;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 
 class SendPipelineTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function defineDatabaseMigrations(): void
+    {
+        Schema::create('test_recipients', function (Blueprint $table) {
+            $table->id();
+            $table->string('email');
+            $table->string('name');
+        });
+    }
 
     public function test_sending_a_newsletter_runs_the_listeners_end_to_end(): void
     {
@@ -18,11 +29,10 @@ class SendPipelineTest extends TestCase
         // and the package listeners run against a real Symfony Email.
         config(['mail.default' => 'array']);
 
-        $recipient = new class extends Model {
-            protected $guarded = [];
-        };
-        $recipient->email = 'ada@example.com';
-        $recipient->name = 'Ada';
+        $recipient = Recipient::create([
+            'email' => 'ada@example.com',
+            'name' => 'Ada',
+        ]);
 
         $newsletter = Newsletter::create([
             'subject' => 'Hi {{name}}',
