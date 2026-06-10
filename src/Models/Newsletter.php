@@ -146,18 +146,26 @@ class Newsletter extends Model
             ->all();
     }
 
-    public static function statistics(?Builder $query = null)
+    public static function statistics(?Builder $query = null, ?string $from = null, ?string $to = null)
     {
         if ($query == null) {
             $query = Message::query();
         }
 
-        $total_days = 21;
+        $start_date = $from ? Carbon::parse($from)->startOfDay() : today()->subDays(20);
+        $end_date = $to ? Carbon::parse($to)->startOfDay() : today();
 
-        $start_date = today()->subDays($total_days - 1);
+        // The controller validates from <= to; keep the model self-consistent too.
+        if ($end_date->lessThan($start_date)) {
+            [$start_date, $end_date] = [$end_date, $start_date];
+        }
+
+        $total_days = (int) $start_date->diffInDays($end_date) + 1;
+
+        $range = [$start_date->toDateTimeString(), $end_date->copy()->endOfDay()->toDateTimeString()];
 
         $send_statistics = (clone $query)
-        ->where('send_at', '>=', $start_date->toDateTimeString())
+        ->whereBetween('send_at', $range)
         ->selectRaw('DATE(send_at) AS date, COUNT(*) AS total')
         ->groupBy(DB::raw('DATE(send_at)'))
         ->get()
@@ -166,7 +174,7 @@ class Newsletter extends Model
         });
 
         $open_statistics = (clone $query)
-        ->where('open_at', '>=', $start_date->toDateTimeString())
+        ->whereBetween('open_at', $range)
         ->selectRaw('DATE(open_at) AS date, COUNT(*) AS total')
         ->groupBy(DB::raw('DATE(open_at)'))
         ->get()
@@ -175,7 +183,7 @@ class Newsletter extends Model
         });
 
         $click_statistics = (clone $query)
-        ->where('click_at', '>=', $start_date->toDateTimeString())
+        ->whereBetween('click_at', $range)
         ->selectRaw('DATE(click_at) AS date, COUNT(*) AS total')
         ->groupBy(DB::raw('DATE(click_at)'))
         ->get()
@@ -184,7 +192,7 @@ class Newsletter extends Model
         });
 
         $unsubscribe_statistics = (clone $query)
-        ->where('unsubscribe_at', '>=', $start_date->toDateTimeString())
+        ->whereBetween('unsubscribe_at', $range)
         ->selectRaw('DATE(unsubscribe_at) AS date, COUNT(*) AS total')
         ->groupBy(DB::raw('DATE(unsubscribe_at)'))
         ->get()
@@ -193,7 +201,7 @@ class Newsletter extends Model
         });
 
         $spam_statistics = (clone $query)
-        ->where('spam_at', '>=', $start_date->toDateTimeString())
+        ->whereBetween('spam_at', $range)
         ->selectRaw('DATE(spam_at) AS date, COUNT(*) AS total')
         ->groupBy(DB::raw('DATE(spam_at)'))
         ->get()
@@ -202,7 +210,7 @@ class Newsletter extends Model
         });
 
         $bounce_statistics = (clone $query)
-        ->where('bounce_at', '>=', $start_date->toDateTimeString())
+        ->whereBetween('bounce_at', $range)
         ->selectRaw('DATE(bounce_at) AS date, COUNT(*) AS total')
         ->groupBy(DB::raw('DATE(bounce_at)'))
         ->get()
@@ -211,7 +219,7 @@ class Newsletter extends Model
         });
 
         $drop_statistics = (clone $query)
-        ->where('drop_at', '>=', $start_date->toDateTimeString())
+        ->whereBetween('drop_at', $range)
         ->selectRaw('DATE(drop_at) AS date, COUNT(*) AS total')
         ->groupBy(DB::raw('DATE(drop_at)'))
         ->get()
@@ -301,8 +309,8 @@ class Newsletter extends Model
         return $chart_data;
     }
 
-    public function getStatistics()
+    public function getStatistics(?string $from = null, ?string $to = null)
     {
-        return static::statistics($this->mails()->getQuery());
+        return static::statistics($this->mails()->getQuery(), $from, $to);
     }
 }
