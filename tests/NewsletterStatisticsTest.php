@@ -13,12 +13,26 @@ class NewsletterStatisticsTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function sentMessage(string $sentAt): void
+    private function newsletter(): Newsletter
+    {
+        return Newsletter::create([
+            'category' => 'x',
+            'after_sec' => 0,
+            'subject' => 's',
+            'body' => 'b',
+        ]);
+    }
+
+    private function message(array $attributes): void
     {
         $message = new Message();
         $message->contact_id = 1;
         $message->subject = 'x';
-        $message->send_at = $sentAt;
+
+        foreach ($attributes as $key => $value) {
+            $message->{$key} = $value;
+        }
+
         $message->save();
     }
 
@@ -31,10 +45,59 @@ class NewsletterStatisticsTest extends TestCase
         $this->assertSame(today()->toDateString(), $data['labels'][20]);
     }
 
+    public function test_statistics_groups_counts_by_newsletter_and_buckets_the_rest(): void
+    {
+        $a = $this->newsletter();
+
+        // Newsletter A: two sends + one click, all inside the default window.
+        $this->message([
+            'mailable_type' => Newsletter::class,
+            'mailable_id' => $a->id,
+            'send_at' => today()->subDays(3)->setTime(12, 0),
+            'click_at' => today()->subDays(3)->setTime(13, 0),
+        ]);
+        $this->message([
+            'mailable_type' => Newsletter::class,
+            'mailable_id' => $a->id,
+            'send_at' => today()->setTime(9, 0),
+        ]);
+
+        // A null-mailable message folds into the shared "other" series.
+        $this->message(['send_at' => today()->setTime(10, 0)]);
+
+        $data = Newsletter::statistics();
+        $series = $data['series'];
+        $key = (string) $a->id;
+
+        $this->assertArrayHasKey($key, $series);
+        $this->assertArrayHasKey('other', $series);
+
+        // The per-newsletter column math: Sent / Clicked totals over the window.
+        $this->assertSame(2, array_sum($series[$key]['send']));
+        $this->assertSame(1, array_sum($series[$key]['click']));
+        $this->assertSame(1, array_sum($series['other']['send']));
+
+        // Per-day alignment: A sent once on (today - 3) and once today.
+        $pastIndex = array_search(today()->subDays(3)->toDateString(), $data['labels'], true);
+        $todayIndex = array_search(today()->toDateString(), $data['labels'], true);
+        $this->assertSame(1, $series[$key]['send'][$pastIndex]);
+        $this->assertSame(1, $series[$key]['send'][$todayIndex]);
+    }
+
     public function test_statistics_honours_an_explicit_from_to_range(): void
     {
-        $this->sentMessage(today()->subDays(3)->setTime(12, 0)->toDateTimeString());  // in range
-        $this->sentMessage(today()->subDays(40)->setTime(12, 0)->toDateTimeString()); // out of range
+        $a = $this->newsletter();
+
+        $this->message([
+            'mailable_type' => Newsletter::class,
+            'mailable_id' => $a->id,
+            'send_at' => today()->subDays(3)->setTime(12, 0), // in range
+        ]);
+        $this->message([
+            'mailable_type' => Newsletter::class,
+            'mailable_id' => $a->id,
+            'send_at' => today()->subDays(40)->setTime(12, 0), // out of range
+        ]);
 
         $from = today()->subDays(6)->toDateString();
         $to = today()->toDateString();
@@ -44,10 +107,22 @@ class NewsletterStatisticsTest extends TestCase
         $this->assertCount(7, $data['labels']);
         $this->assertSame($from, $data['labels'][0]);
         $this->assertSame($to, $data['labels'][6]);
+        $this->assertSame(1, array_sum($data['series'][(string) $a->id]['send']));
+    }
 
-        // "Sent" is the first dataset; only the in-range message should be counted.
-        $this->assertSame('Sent', $data['datasets'][0]['label']);
-        $this->assertSame(1, array_sum($data['datasets'][0]['data']));
+    public function test_get_statistics_scopes_to_the_single_newsletter(): void
+    {
+        $a = $this->newsletter();
+        $b = $this->newsletter();
+
+        $this->message(['mailable_type' => Newsletter::class, 'mailable_id' => $a->id, 'send_at' => today()->setTime(9, 0)]);
+        $this->message(['mailable_type' => Newsletter::class, 'mailable_id' => $b->id, 'send_at' => today()->setTime(9, 0)]);
+
+        $series = $a->getStatistics()['series'];
+
+        $this->assertArrayHasKey((string) $a->id, $series);
+        $this->assertArrayNotHasKey((string) $b->id, $series);
+        $this->assertSame(1, array_sum($series[(string) $a->id]['send']));
     }
 
     private function index(array $query)

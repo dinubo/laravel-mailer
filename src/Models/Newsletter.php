@@ -164,149 +164,56 @@ class Newsletter extends Model
 
         $range = [$start_date->toDateTimeString(), $end_date->copy()->endOfDay()->toDateTimeString()];
 
-        $send_statistics = (clone $query)
-        ->whereBetween('send_at', $range)
-        ->selectRaw('DATE(send_at) AS date, COUNT(*) AS total')
-        ->groupBy(DB::raw('DATE(send_at)'))
-        ->get()
-        ->mapWithKeys(function ($row) {
-            return [$row['date'] => $row['total']];
-        });
+        $metrics = ['send', 'open', 'click', 'unsubscribe', 'bounce', 'drop', 'spam'];
 
-        $open_statistics = (clone $query)
-        ->whereBetween('open_at', $range)
-        ->selectRaw('DATE(open_at) AS date, COUNT(*) AS total')
-        ->groupBy(DB::raw('DATE(open_at)'))
-        ->get()
-        ->mapWithKeys(function ($row) {
-            return [$row['date'] => $row['total']];
-        });
+        $labels = [];
+        $date_index = [];
 
-        $click_statistics = (clone $query)
-        ->whereBetween('click_at', $range)
-        ->selectRaw('DATE(click_at) AS date, COUNT(*) AS total')
-        ->groupBy(DB::raw('DATE(click_at)'))
-        ->get()
-        ->mapWithKeys(function ($row) {
-            return [$row['date'] => $row['total']];
-        });
-
-        $unsubscribe_statistics = (clone $query)
-        ->whereBetween('unsubscribe_at', $range)
-        ->selectRaw('DATE(unsubscribe_at) AS date, COUNT(*) AS total')
-        ->groupBy(DB::raw('DATE(unsubscribe_at)'))
-        ->get()
-        ->mapWithKeys(function ($row) {
-            return [$row['date'] => $row['total']];
-        });
-
-        $spam_statistics = (clone $query)
-        ->whereBetween('spam_at', $range)
-        ->selectRaw('DATE(spam_at) AS date, COUNT(*) AS total')
-        ->groupBy(DB::raw('DATE(spam_at)'))
-        ->get()
-        ->mapWithKeys(function ($row) {
-            return [$row['date'] => $row['total']];
-        });
-
-        $bounce_statistics = (clone $query)
-        ->whereBetween('bounce_at', $range)
-        ->selectRaw('DATE(bounce_at) AS date, COUNT(*) AS total')
-        ->groupBy(DB::raw('DATE(bounce_at)'))
-        ->get()
-        ->mapWithKeys(function ($row) {
-            return [$row['date'] => $row['total']];
-        });
-
-        $drop_statistics = (clone $query)
-        ->whereBetween('drop_at', $range)
-        ->selectRaw('DATE(drop_at) AS date, COUNT(*) AS total')
-        ->groupBy(DB::raw('DATE(drop_at)'))
-        ->get()
-        ->mapWithKeys(function ($row) {
-            return [$row['date'] => $row['total']];
-        });
-
-        $data = [];
-
-        for($i = 0; $i < $total_days; $i++) {
+        for ($i = 0; $i < $total_days; $i++) {
             $date = $start_date->copy()->addDays($i)->toDateString();
-            $data[$date] = [
-                'send' => 0,
-                'open' => 0,
-                'click' => 0,
-                'unsubscribe' => 0,
-                'spam' => 0,
-                'bounce' => 0,
-                'drop' => 0,
-            ];
+            $labels[] = $date;
+            $date_index[$date] = $i;
         }
 
-        foreach($send_statistics AS $date => $total) {
-            $data[$date]['send'] = $total;
+        // Bucket each message under its Newsletter id; every other mailable type
+        // (and null-mailable messages) collapses into a single "other" series, so
+        // the payload stays bounded by the number of newsletters. The chart sums
+        // every series (= all messages); the per-newsletter table reads its own id.
+        $bucket = 'CASE WHEN mailable_type = ? THEN mailable_id ELSE NULL END';
+
+        $series = [];
+
+        foreach ($metrics as $metric) {
+            $column = $metric . '_at';
+
+            // Group by the SELECT aliases (not the repeated expressions): MySQL's
+            // ONLY_FULL_GROUP_BY rejects matching a CASE expression between the
+            // SELECT and GROUP BY lists, but grouping by the alias is unambiguous.
+            $rows = (clone $query)
+                ->whereBetween($column, $range)
+                ->selectRaw("DATE($column) AS date, ($bucket) AS newsletter_id, COUNT(*) AS total", [static::class])
+                ->groupByRaw('date, newsletter_id')
+                ->get();
+
+            foreach ($rows as $row) {
+                if (! isset($date_index[$row->date])) {
+                    continue;
+                }
+
+                $key = $row->newsletter_id === null ? 'other' : (string) $row->newsletter_id;
+
+                if (! isset($series[$key])) {
+                    $series[$key] = array_fill_keys($metrics, array_fill(0, $total_days, 0));
+                }
+
+                $series[$key][$metric][$date_index[$row->date]] = (int) $row->total;
+            }
         }
 
-        foreach($open_statistics AS $date => $total) {
-            $data[$date]['open'] = $total;
-        }
-
-        foreach($click_statistics AS $date => $total) {
-            $data[$date]['click'] = $total;
-        }
-
-        foreach($unsubscribe_statistics AS $date => $total) {
-            $data[$date]['unsubscribe'] = $total;
-        }
-
-        foreach($spam_statistics AS $date => $total) {
-            $data[$date]['spam'] = $total;
-        }
-
-        foreach($bounce_statistics AS $date => $total) {
-            $data[$date]['bounce'] = $total;
-        }
-
-        foreach($drop_statistics AS $date => $total) {
-            $data[$date]['drop'] = $total;
-        }
-
-        $data = collect($data);
-
-        $chart_data = [
-            'labels' => $data->keys()->toArray(),
-            'datasets' => [
-                [
-                    'label' => "Sent",
-                    'data' => $data->pluck('send')->toArray(),
-                ],
-                [
-                    'label' => "Opens",
-                    'data' => $data->pluck('open')->toArray(),
-                ],
-                [
-                    'label' => "Clicks",
-                    'data' => $data->pluck('click')->toArray(),
-                ],
-                [
-                    'label' => "Unsubscribes",
-                    'data' => $data->pluck('unsubscribe')->toArray(),
-                ],
-                [
-                    'label' => "Bounces",
-                    'data' => $data->pluck('bounce')->toArray(),
-                ],
-                [
-                    'label' => "Drops",
-                    'data' => $data->pluck('drop')->toArray(),
-                ],
-                [
-                    'label' => "Spam",
-                    'data' => $data->pluck('spam')->toArray(),
-                ],
-            ],
+        return [
+            'labels' => $labels,
+            'series' => $series,
         ];
-
-        return $chart_data;
     }
 
     public function getStatistics(?string $from = null, ?string $to = null)
