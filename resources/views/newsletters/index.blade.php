@@ -21,37 +21,23 @@
             </a>
         </h2>
 
-        {{ $newsletters->links() }}
+        <div class="js-pagination">{{ $newsletters->links() }}</div>
 
         <table class="table">
             <thead>
                 <tr>
-                    <th>#</th>
-                    <th>
-                        Segment
-                    </th>
-                    <th>
-                        Event
-                    </th>
-                    <th>
-                        Action
-                    </th>
-                    <th>
-                        Category
-                    </th>
-                    <th>
-                        Subject
-                    </th>
-                    <th>
-                        Scheduled
-                    </th>
-                    <th>
-                        Rate
-                    </th>
+                    <th>@include('mailer::newsletters._sortable_header', ['column' => 'id', 'label' => '#'])</th>
+                    <th>@include('mailer::newsletters._sortable_header', ['column' => 'segment', 'label' => 'Segment'])</th>
+                    <th>@include('mailer::newsletters._sortable_header', ['column' => 'event', 'label' => 'Event'])</th>
+                    <th>@include('mailer::newsletters._sortable_header', ['column' => 'action', 'label' => 'Action'])</th>
+                    <th>@include('mailer::newsletters._sortable_header', ['column' => 'category', 'label' => 'Category'])</th>
+                    <th>@include('mailer::newsletters._sortable_header', ['column' => 'subject', 'label' => 'Subject'])</th>
+                    <th>@include('mailer::newsletters._sortable_header', ['column' => 'scheduled', 'label' => 'Scheduled'])</th>
+                    <th>@include('mailer::newsletters._sortable_header', ['column' => 'rate', 'label' => 'Rate'])</th>
+                    <th>@include('mailer::newsletters._sortable_header', ['column' => 'status', 'label' => 'Status'])</th>
                     <th>Sent</th>
                     <th>Clicks</th>
                     <th>Unsubscribes</th>
-                    <th>Status</th>
                     <th></th>
                 </tr>
             </thead>
@@ -66,10 +52,10 @@
                         <td>{{ $newsletter->subject }}</td>
                         <td>{{ $newsletter->after }}</td>
                         <td>{{ $newsletter->daily_rate }}</td>
+                        <td>{{ $newsletter->is_active ? 'Active' : 'Inactive' }}</td>
                         <td class="js-sent">…</td>
                         <td class="js-clicked">…</td>
                         <td class="js-unsubscribe">…</td>
-                        <td>{{ $newsletter->is_active ? 'Active' : 'Inactive' }}</td>
                         <td>
                             <a href="{{ route('mailer.newsletters.show', $newsletter) }}" class="btn btn-info text-white">
                                 <i class="material-icons">arrow_forward</i>
@@ -80,7 +66,7 @@
             </tbody>
         </table>
 
-        {{ $newsletters->links() }}
+        <div class="js-pagination">{{ $newsletters->links() }}</div>
 
     </div>
 

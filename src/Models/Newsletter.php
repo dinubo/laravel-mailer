@@ -29,9 +29,7 @@ class Newsletter extends Model
         'body',
     ];
 
-    protected $casts = [
-        //
-    ];
+    protected $casts = [];
 
     public function mails()
     {
@@ -152,12 +150,24 @@ class Newsletter extends Model
             $query = Message::query();
         }
 
-        $start_date = $from ? Carbon::parse($from)->startOfDay() : today()->subDays(20);
-        $end_date = $to ? Carbon::parse($to)->startOfDay() : today();
+        $window = 21;
 
-        // The controller validates from <= to; keep the model self-consistent too.
-        if ($end_date->lessThan($start_date)) {
-            [$start_date, $end_date] = [$end_date, $start_date];
+        if ($from && $to) {
+            $start_date = Carbon::parse($from)->startOfDay();
+            $end_date = Carbon::parse($to)->startOfDay();
+
+            if ($end_date->lessThan($start_date)) {
+                [$start_date, $end_date] = [$end_date, $start_date];
+            }
+        } elseif ($from) {
+            $start_date = Carbon::parse($from)->startOfDay();
+            $end_date = $start_date->copy()->addDays($window - 1);
+        } elseif ($to) {
+            $end_date = Carbon::parse($to)->startOfDay();
+            $start_date = $end_date->copy()->subDays($window - 1);
+        } else {
+            $end_date = today();
+            $start_date = $end_date->copy()->subDays($window - 1);
         }
 
         $total_days = (int) $start_date->diffInDays($end_date) + 1;
@@ -175,23 +185,17 @@ class Newsletter extends Model
             $date_index[$date] = $i;
         }
 
-        // Bucket each message under its Newsletter id; every other mailable type
-        // (and null-mailable messages) collapses into a single "other" series, so
-        // the payload stays bounded by the number of newsletters. The chart sums
-        // every series (= all messages); the per-newsletter table reads its own id.
         $bucket = 'CASE WHEN mailable_type = ? THEN mailable_id ELSE NULL END';
+        $morph_class = (new static)->getMorphClass();
 
         $series = [];
 
         foreach ($metrics as $metric) {
             $column = $metric . '_at';
 
-            // Group by the SELECT aliases (not the repeated expressions): MySQL's
-            // ONLY_FULL_GROUP_BY rejects matching a CASE expression between the
-            // SELECT and GROUP BY lists, but grouping by the alias is unambiguous.
             $rows = (clone $query)
                 ->whereBetween($column, $range)
-                ->selectRaw("DATE($column) AS date, ($bucket) AS newsletter_id, COUNT(*) AS total", [static::class])
+                ->selectRaw("DATE($column) AS date, ($bucket) AS newsletter_id, COUNT(*) AS total", [$morph_class])
                 ->groupByRaw('date, newsletter_id')
                 ->get();
 

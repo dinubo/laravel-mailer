@@ -26,11 +26,6 @@ class NewsletterStatisticsController extends Controller
         return response()->json($chart_data);
     }
 
-    /**
-     * Validate the optional ?from / ?to query parameters. Both are optional
-     * (absent => the model's default 21-day window); when given they must be
-     * valid dates with to >= from.
-     */
     private function validateRange(Request $request): array
     {
         return $request->validate([

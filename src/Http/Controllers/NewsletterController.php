@@ -2,7 +2,9 @@
 
 namespace Dinubo\Mailer\Http\Controllers;
 
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Validation\Rule;
 use Dinubo\Mailer\Http\Requests\NewsletterRequest;
 use Dinubo\Mailer\Mailer;
 use Dinubo\Mailer\Models\Newsletter;
@@ -12,11 +14,53 @@ class NewsletterController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $newsletters = Newsletter::orderBy('category')->paginate(100);
+        $sortable = [
+            'id' => 'id',
+            'segment' => 'segment',
+            'event' => 'event',
+            'action' => 'action',
+            'category' => 'category',
+            'subject' => 'subject',
+            'scheduled' => 'after_sec',
+            'rate' => 'daily_rate',
+            'status' => 'is_active',
+        ];
 
-        return view('mailer::newsletters.index', compact('newsletters'));
+        $request->validate([
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date', 'after_or_equal:from'],
+            'sort' => ['nullable', Rule::in(array_keys($sortable))],
+            'dir' => ['nullable', Rule::in(['asc', 'desc'])],
+        ]);
+
+        $sort = $this->preference($request, 'sort', array_keys($sortable)) ?? 'category';
+        $dir = $this->preference($request, 'dir', ['asc', 'desc']) ?? 'asc';
+
+        $newsletters = Newsletter::orderBy($sortable[$sort], $dir)
+            ->orderBy('id')
+            ->paginate(25)
+            ->withQueryString();
+
+        return view('mailer::newsletters.index', compact('newsletters', 'sort', 'dir'));
+    }
+
+    /**
+     * @param list<string> $allowed
+     */
+    private function preference(Request $request, string $param, array $allowed): ?string
+    {
+        if ($request->filled($param)) {
+            $value = $request->query($param);
+            session(["mailer.$param" => $value]);
+
+            return $value;
+        }
+
+        $value = session("mailer.$param");
+
+        return in_array($value, $allowed, true) ? $value : null;
     }
 
     /**
@@ -62,8 +106,13 @@ class NewsletterController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(Newsletter $newsletter)
+    public function show(Request $request, Newsletter $newsletter)
     {
+        $request->validate([
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date', 'after_or_equal:from'],
+        ]);
+
         return view('mailer::newsletters.show', compact('newsletter'));
     }
 

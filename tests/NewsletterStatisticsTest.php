@@ -5,6 +5,7 @@ namespace Dinubo\Mailer\Tests;
 use Dinubo\Mailer\Http\Controllers\NewsletterStatisticsController;
 use Dinubo\Mailer\Models\Message;
 use Dinubo\Mailer\Models\Newsletter;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -45,6 +46,24 @@ class NewsletterStatisticsTest extends TestCase
         $this->assertSame(today()->toDateString(), $data['labels'][20]);
     }
 
+    public function test_statistics_with_only_a_start_spans_the_window_forward(): void
+    {
+        $data = Newsletter::statistics(null, '2026-06-01', null);
+
+        $this->assertCount(21, $data['labels']);
+        $this->assertSame('2026-06-01', $data['labels'][0]);
+        $this->assertSame('2026-06-21', $data['labels'][20]);
+    }
+
+    public function test_statistics_with_only_an_end_spans_the_window_back(): void
+    {
+        $data = Newsletter::statistics(null, null, '2026-06-30');
+
+        $this->assertCount(21, $data['labels']);
+        $this->assertSame('2026-06-10', $data['labels'][0]);
+        $this->assertSame('2026-06-30', $data['labels'][20]);
+    }
+
     public function test_statistics_groups_counts_by_newsletter_and_buckets_the_rest(): void
     {
         $a = $this->newsletter();
@@ -82,6 +101,29 @@ class NewsletterStatisticsTest extends TestCase
         $todayIndex = array_search(today()->toDateString(), $data['labels'], true);
         $this->assertSame(1, $series[$key]['send'][$pastIndex]);
         $this->assertSame(1, $series[$key]['send'][$todayIndex]);
+    }
+
+    public function test_statistics_buckets_by_the_registered_morph_alias(): void
+    {
+        Relation::morphMap(['newsletter' => Newsletter::class]);
+
+        try {
+            $a = $this->newsletter();
+
+            $message = new Message();
+            $message->contact_id = 1;
+            $message->subject = 'x';
+            $message->send_at = today()->setTime(9, 0);
+            $message->mailable()->associate($a); // stores the 'newsletter' alias in mailable_type
+            $message->save();
+
+            $series = Newsletter::statistics()['series'];
+
+            $this->assertArrayHasKey((string) $a->id, $series);
+            $this->assertSame(1, array_sum($series[(string) $a->id]['send']));
+        } finally {
+            Relation::morphMap([], false);
+        }
     }
 
     public function test_statistics_honours_an_explicit_from_to_range(): void

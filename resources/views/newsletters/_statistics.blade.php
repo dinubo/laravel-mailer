@@ -1,12 +1,3 @@
-{{--
-    Shared statistics chart for the newsletters index and show pages.
-
-    Expects a `$endpoint` variable (the statistics JSON URL). The endpoint returns
-    { labels: [...dates], series: { "<newsletterId>"|"other": { send:[...], ... } } }.
-    The chart sums every series into one dataset per metric; on the index page the
-    per-newsletter Sent / Clicked columns read each row's own series by id (this is
-    a no-op anywhere without those rows).
---}}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
 <script>
@@ -39,30 +30,25 @@ document.addEventListener('DOMContentLoaded', function () {
     var chart;
     var rows = Array.prototype.slice.call(document.querySelectorAll('tr[data-newsletter-id]'));
 
-    // Default window: the last 21 days (today - 20 ... today).
-    var end = new Date();
-    var start = new Date();
-    start.setDate(end.getDate() - 20);
-
     function fmt(d) {
         var month = ('0' + (d.getMonth() + 1)).slice(-2);
         var day = ('0' + d.getDate()).slice(-2);
         return d.getFullYear() + '-' + month + '-' + day;
     }
 
+    var from = "{{ request('from') }}";
+    var to = "{{ request('to') }}";
+    var picker;
+
     function sum(arr) {
         return (arr || []).reduce(function (total, value) { return total + (value || 0); }, 0);
     }
 
-    // Format the count with its rate vs. the sent total on a second line:
-    // "<count><br>(<rate>%)" (— when nothing was sent).
     function withRate(count, sent) {
         var rate = sent > 0 ? (count / sent * 100).toFixed(2) + '%' : '—';
         return count + '<br>(' + rate + ')';
     }
 
-    // Collapse the per-newsletter series into one global dataset per metric by
-    // summing every series' daily counts (aligned to labels).
     function buildDatasets(payload) {
         var labels = payload.labels || [];
         var series = payload.series || {};
@@ -114,8 +100,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // Fill each newsletter's Sent / Clicked columns from the same payload the
-    // chart uses. No rows (e.g. the show page) => nothing to do.
     function fillTotals(payload) {
         var series = payload.series || {};
 
@@ -141,8 +125,31 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    function syncPicker(labels) {
+        if (! labels || ! labels.length) {
+            return;
+        }
+
+        var from = labels[0];
+        var to = labels[labels.length - 1];
+
+        if (picker) {
+            picker.setDate([from, to], false);
+        }
+
+        updateUrl(from, to);
+    }
+
     function refresh(from, to) {
-        fetch(endpoint + '?from=' + from + '&to=' + to)
+        var params = [];
+        if (from) {
+            params.push('from=' + from);
+        }
+        if (to) {
+            params.push('to=' + to);
+        }
+
+        fetch(endpoint + (params.length ? '?' + params.join('&') : ''))
             .then(function (response) {
                 if (! response.ok) {
                     throw new Error('HTTP ' + response.status);
@@ -153,6 +160,7 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(function (payload) {
                 renderChart(payload);
                 fillTotals(payload);
+                syncPicker(payload.labels);
             })
             .catch(function (error) {
                 console.error('Error loading chart data', error);
@@ -160,19 +168,43 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     }
 
+    function updateUrl(from, to) {
+        try {
+            var here = new URL(window.location.href);
+            here.searchParams.set('from', from);
+            here.searchParams.set('to', to);
+            window.history.replaceState({}, '', here);
+        } catch (e) {}
+    }
+
+    function syncRange(from, to) {
+        updateUrl(from, to);
+
+        document.querySelectorAll('a.js-range-link, .js-pagination a').forEach(function (link) {
+            try {
+                var url = new URL(link.href);
+                url.searchParams.set('from', from);
+                url.searchParams.set('to', to);
+                link.href = url.toString();
+            } catch (e) {}
+        });
+    }
+
     if (rangeInput && window.flatpickr) {
-        flatpickr(rangeInput, {
+        picker = flatpickr(rangeInput, {
             mode: 'range',
             dateFormat: 'Y-m-d',
-            defaultDate: [start, end],
             onChange: function (selectedDates) {
                 if (selectedDates.length === 2) {
-                    refresh(fmt(selectedDates[0]), fmt(selectedDates[1]));
+                    var from = fmt(selectedDates[0]);
+                    var to = fmt(selectedDates[1]);
+                    refresh(from, to);
+                    syncRange(from, to);
                 }
             },
         });
     }
 
-    refresh(fmt(start), fmt(end));
+    refresh(from, to);
 });
 </script>
